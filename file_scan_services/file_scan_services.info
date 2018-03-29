@@ -1,0 +1,8 @@
+
+name = File Scan Services
+description = WebService APIs for file scan services.
+core = 7.x
+package = file scan services
+project = file_scan_services
+dependencies[] = services
+dependencies[] = rest_server

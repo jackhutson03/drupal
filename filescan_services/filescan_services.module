@@ -1,0 +1,48 @@
+<?php
+
+/**
+ * @file
+ * Module file for Housing Schemes Services.
+ * Contains the resource declarations for the service APIs
+ * and other commons functions/hooks. if necessary
+ */
+
+/**
+ * Implements hook_services_resources().
+ * Create service resource for APIs to return the necessary json data.
+ 
+
+function filescan_services_form_views_exposed_form_alter(&$form, $form_state) {
+  if( $form['#id'] == 'views-exposed-form-commission-report-page-1') {
+    // Switch date formatter to month only
+    $form['field_commission_add_date']['value']['#date_format'] = 'm';
+    // Add extra validator to handle filter submit
+   $form['#validate'][] = 'filescan_services_views_exposed_form_validate';//die;
+  }
+}*/
+/**
+ * Custom validator for exposed date filter
+ 
+function filescan_services_views_exposed_form_validate(&$form, &$form_state) {
+  $handlers = &$form_state['view']->filter;
+  foreach ($handlers as $key => $handler) {
+    if (!empty($handler->options['exposed'])
+     && isset($form[$key]['value']['#type'])
+     && $form[$key]['value']['#type'] == 'date_select'
+     && $form[$key]['value']['#date_format'] == 'm'){
+      $handler->options['granularity'] = 'month';
+      $handler->format = 'm';
+    }
+  }
+}
+*/
+
+function filescan_services_views_pre_build(&$view){
+    if($view->name=="commission_report") {
+        // Test if we only have a year instead of Y-m
+        if(!empty($view->args[0]) && drupal_strlen($view->args[0]) == 4){
+            $view->argument['field_commission_add_date_value_1']->arg_format = 'Y';
+            $view->argument['field_commission_add_date_value_1']->options['granularity'] = 'year';
+        }
+    }
+}

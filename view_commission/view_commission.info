@@ -1,0 +1,11 @@
+name = View Commision
+description = Drupal File API and Stream Wrappers.
+package = File Scan Modules
+core = 7.x
+scripts[] = view_commission.js
+
+version = "7.x"
+core = "7.x"
+project = "FileScan"
+
+

@@ -1,0 +1,752 @@
+<?php
+
+/*
+ * @file
+* Add a "Custom Menu" link to Drupal's main administration menu.
+*/
+
+/**
+ * Implementation of hook_help()
+ */
+function menu_ceser_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#menu_custom':
+      return '<p>' . t('This module add a "Custom Menu" link to Drupal\'s main administration menu') . '</p>';
+  }
+}
+/*
+ *   Author: Ashish Shrivastva
+ *   Comapny Name: Opulence Infotech Pvt. Ltd.
+ *   Writer: Opulence
+ *   Version: 7.x
+ *   Descriptiotn: Crawl files from folder and dynamically add node and assign permission to specific user type. Intract with ACL component using this custommodule.  		
+ * 
+ * */
+function file_scan_menu() {
+  $items = array();
+  $items['file_scan'] = array(
+    'title' => 'File Scan',
+    'page callback' => 'file_scan_folders',
+    'access callback' => TRUE,
+    'expanded' => TRUE,    
+  );
+  
+  $items['admin/file_scan'] = array(
+      'title' => 'File Scan',
+      'description' => 'A file scan menu',
+      'page callback' => 'file_scan_tab1_content',
+      'type' => MENU_NORMAL_ITEM,
+      'access callback' => true,
+      'weight' => 50
+  );
+  
+  $items['admin/file_scan/tab1'] = array(
+      'title' => 'File Scan',
+      'description' => 'A file scan menu',
+      'page callback' => 'file_scan_tab2_content',
+      'type' => MENU_NORMAL_ITEM,
+      'access callback' => true,
+      'weight' => 50
+  );  
+
+  $items['admin/file_scan/tab1'] = array(
+      'title' => '',
+      'description' => 'Tab 1 of the custom menu',
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'weight' => 0
+  );
+  
+  $items['admin/file_scan/tab2'] = array(
+      'title' => '',
+      'description' => 'Tab 2 of the custom menu',
+      'page callback' => 'file_scan_tab2_content',
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'weight' => 0
+  );
+  
+  $items['admin/file_scan/delete/%'] = array(
+	'#attributes' => array(
+		'class' => array('confirm'),
+		'onclick' => "return confirm('Are you sure you want to delete that?')"
+	  ),
+    'page callback' => 'file_scan_delete',
+    'page arguments' => array(3),
+    'access arguments' => array('permission name'),
+    'type' => MENU_CALLBACK,
+  );  
+  return $items;
+}
+
+function file_scan_delete($nid){
+	db_delete('file_scan_log')
+    ->condition('id', $nid)
+    ->execute();
+
+    drupal_set_message(t('File deleted successfully'));
+    drupal_goto();
+}
+
+/*
+ * Content of the first tab of the custom menu
+*/
+function file_scan_tab2_content() {
+		$msg = '';
+		$mid = 0;
+		$subject = '';
+		$ebody = '';
+		$resultNodeType = db_query("SELECT subject,body,mid FROM `scan_file_mailconfig`"); 
+		$num = $resultNodeType->rowCount();		
+		if($num>0){			
+			foreach ($resultNodeType as $records) {		
+				$subject = $records->subject;
+				$ebody = $records->body;
+				$mid = $records->mid;		  
+			}
+			if(isset($_REQUEST['email_subject']) && $_REQUEST['email_subject']==''){
+				$msg = 'Subject not empty';				
+			}else if(isset($_REQUEST['email_body']) && $_REQUEST['email_body']==''){
+				$msg = 'Email body not empty';				
+			}else if(@$_REQUEST['email_body']!='' && @$_REQUEST['email_body']!=''){
+				db_update('scan_file_mailconfig') // Table name no longer needs {}
+				  ->fields(array(			
+					'subject' => trim(@$_REQUEST['email_subject']),
+					'body' => trim(@$_REQUEST['email_body']),	
+				  ))
+				  ->condition('mid', $mid, '=')
+				  ->execute();
+				drupal_set_message(t('Files setting added successfully'));
+			}				
+		}else{
+			if(isset($_REQUEST['op']) && !empty($_REQUEST['op'])){
+				if($_REQUEST['email_subject']==''){
+					$msg = 'Subject not empty';				
+				}else if($_REQUEST['email_body']==''){
+					$msg = 'Email body not empty';				
+				}else{				
+					$mid = (int) @$_REQUEST['mid'];
+					
+					$AutoAclID = db_insert('scan_file_mailconfig') // Table name no longer needs {}
+					->fields(array(
+					  'subject' => trim($_REQUEST['email_subject']),
+					  'body' => trim($_REQUEST['email_body']),					  
+					))
+					->execute();					
+				}		
+			}
+		}		
+		$resultNodeType = db_query("SELECT subject,body,mid FROM `scan_file_mailconfig`"); 
+		$num = $resultNodeType->rowCount();		
+		if($num>0){			
+			foreach ($resultNodeType as $records) {		
+				$subject = $records->subject;
+				$ebody = $records->body;
+				$mid = $records->mid;		  
+			}
+		}	
+		$output = '';
+		$query_scan = array(
+			  'tokn' => drupal_get_token(),
+			) + drupal_get_destination();
+		$des = array('destination' => 'admin/file_scan/tab2');	
+		
+		$query_scan_tab = array(
+			  'tokn' => drupal_get_token(),
+			) + drupal_get_destination();
+		
+		$output .= "<table style='background-color:#EFEFEF;font-weight:bold;font-size:14px;'>
+			<tr>
+				<td colspan='6'>".l(t('Back'), 'admin/file_scan/tab1', array('query' => '', 'attributes' => array('id' => 'tab2')))."</td>	
+				<td colspan='6'>".l(t('Email Settings'), 'admin/file_scan/tab2', array('query' => '', 'attributes' => array('id' => 'tab2')))."</td>
+			</tr>
+		</table>";
+		
+		$output .= "<form method='post'>
+						<table>	
+						    <tr><td colspan='2'>".$msg."</td></tr>
+							<tr style='background-color:#DDD;'>
+								<td style='vertical-align:top !important;font-weight: bold;'>Subject: </td>
+								<td><input type='text' name='email_subject' id='email_subject' value='".$subject."' class='form-text' style='margin: 0px; width: 616px; height: 30px;'></td>
+							</tr>
+							<tr style='background-color:#DDD;'>
+								<td style='vertical-align:top !important;font-weight: bold;'>Body: </td>
+								<td><textarea name='email_body' id='email_body' class='form-textarea' style='margin: 0px; width: 616px; height: 250px;'>".$ebody."</textarea></td>
+							</tr>	
+							<tr>
+								<td colspan='2'>
+								<input type='hidden' name='mid' value='".$mid."'>
+								<div class='form-actions form-wrapper' id='edit-actions'><input type='submit' id='edit-submit' onclick='validate_setting();' name='op' value='Save configuration' class='form-submit'></div>
+								</td>
+							</tr>
+						</table>
+					</form>";
+		return $output;
+}
+
+/*
+ * Content of the first tab of the custom menu
+*/
+function file_scan_tab1_content() {
+		$output = '';
+		//echo 'Destination = <pre>';print_r(drupal_get_destination());
+        $query_scan = array(
+			  'tokn' => drupal_get_token(),
+			) + drupal_get_destination();
+		$des = array('destination' => 'admin/file_scan/tab2');	
+		
+		$query_scan_tab = array(
+			  'tokn' => drupal_get_token(),
+			) + drupal_get_destination();
+		$output .= "<table style='background-color:#EFEFEF;font-weight:bold;font-size:14px;'>
+		<tr>
+			<td>".l(t('Scan File'), 'file_scan', array('query' => $query_scan, 'attributes' => array('id' => 'unlink_comission();')))."</td>		
+			<td colspan='6'>".l(t('Email Settings'), 'admin/file_scan/tab2', array('query' => '', 'attributes' => array('id' => 'tab2')))."</td>
+		</tr>
+	</table>";
+	$dir = variable_get('folder_name');
+	$output .= "
+				<table>	
+					<tr style='background-color:#DDD;'>
+						<td>S.No</td>
+						<td>Agent Name</td>
+						<td>Group ID</td>
+						<td>File Name</td>
+						<td>Date</td>
+						<td>Status</td>
+						<td>Operation</td>
+					</tr>";
+	$resultNodeType = db_query("SELECT * FROM file_scan_log"); 	
+	$num_of_results = $resultNodeType->rowCount();
+	if($num_of_results==0){
+		$output .= '<tr><td colspan="7">No record found.</td></tr>';
+	}else{
+		$ii = 0;
+		foreach ($resultNodeType as $records) {	
+			$ii++;	
+			if($records->user_id==''){ 
+				$un = 'N/A';
+			}else{
+				$un = $records->user_id;
+			}
+			//return print_r($records);		
+			$query = array(
+			  'tok' => drupal_get_token('delete_log_item' . $records->id),
+			) + drupal_get_destination();  
+			$output .= '<tr>
+							<td>'.$ii.'</td>
+							<td>'.$un.'</td>
+							<td>'.$records->file_content.'</td>
+							<td>'.$records->filename.'</td>
+							<td>'.$records->file_date.'</td>
+							<td>'.$records->status.'</td>
+							<td>'.l(t('Delete'), 'admin/file_scan/delete/' . $records->id, array('query' => $query, 'attributes' => array('onclick' => 'unlink_comission_file();'))).'</td>
+						</tr>';
+		}
+		$output .= "</table>";
+	}
+	return $output;
+}
+
+function file_scan_node_delete($node) {
+  db_delete('node_entry_revision')
+    ->condition('nodeid', $node->nid)
+    ->execute();
+
+  db_delete('field_data_field_document')
+    ->condition('entity_id', $node->nid)
+    ->execute();
+    
+   db_delete('field_data_field_docs')
+    ->condition('entity_id', $node->nid)
+    ->execute();  
+}
+
+function file_scan_node_delete_confirm_submit($form, &$form_state) {
+  db_delete('node_entry_revision')
+    ->condition('nodeid', $node->nid)
+    ->execute();
+    
+  db_delete('field_data_field_document')
+    ->condition('entity_id', $node->nid)
+    ->execute();
+    
+  db_delete('field_data_field_docs')
+    ->condition('entity_id', $node->nid)
+    ->execute();
+}
+
+function file_scan_folders($dir = 'my_commissions', $mask='', $options = array(), $depth = 0) {
+  //$dir = variable_get('folder_name');
+  $dir = 'my_commissions';
+  // Merge in defaults.
+  $options += array(
+    'callback' => 0,
+    'recurse' => TRUE,
+    'key' => 'uri',
+    'min_depth' => 0,
+  );
+  // Normalize $dir only once.
+  if ($depth == 0) {
+    $dir = file_stream_wrapper_uri_normalize($dir);
+    $dir_has_slash = (substr($dir, -1) === '/');
+  }
+	
+  $options['key'] = in_array($options['key'], array('uri', 'filename', 'name')) ? $options['key'] : 'uri';
+  $files = array();
+  // Avoid warnings when opendir does not have the permissions to open a
+  // directory.
+  if (is_dir($dir)) {
+	if ($handle = opendir($dir)) {	
+	  $htmlArr = "";
+	  $htmlArr .= "<table>
+					<tr style='background-color:#DDD;color:#FFF;'>
+						<td>S.No.</td>
+						<td>Agent Name</td>
+						<td>Matching Id</td>
+						<td>Group Name</td>
+						<td>Commision File</td>
+					</tr>"; 	
+	  $no = 0;	
+	  $message = '';				
+      while (FALSE !== ($filename = readdir($handle))) {		
+        // Skip this file if it matches the nomask or starts with a dot.
+        if ($filename[0] != '.'
+         && !(isset($options['nomask']) && preg_match($options['nomask'], $filename))
+           && !(!empty($default_nomask) && preg_match($default_nomask, $filename))
+          ) {
+          if ($depth == 0 && $dir_has_slash) {
+            $uri = "$dir$filename";
+          }
+          else {
+			//my_commissions_QABSCD_WWWCCC_20170311.txt
+			//my_commissions_QABSCD_WWWCCC_20170311_2015.txt -----> For the commission reports
+			
+            $FileArr = explode('.',$filename);
+            $ExpArr = explode('_', $FileArr['0']);   
+            
+            if(isset($ExpArr[5]))
+            $payout = $ExpArr[5];
+            else
+            $payout = '';
+            $uGroupId = trim($ExpArr[3]);
+            $usersarr = get_my_data(trim($ExpArr[2]));
+            $UserID = '';            
+            foreach ($usersarr as $record) {
+				$UserID = $record->uid;					  
+			}
+			
+			$UserName = get_username($UserID);
+			
+			if(empty($UserID) && $UserID==""){
+				$htmlArr .= "<tr>
+								<td>".($no+1)."</td>
+								<td>Agent Not Exsist</td>
+								<td>".$ExpArr[2]."</td>
+								<td>".$ExpArr[3]."</td>
+								<td>".$filename."</td>
+								<td>AgentId Not Found</td>
+							</tr>";		
+				$file_scan_log = manage_filescan_log($UserID, $ExpArr[3], $ExpArr[4], $filename, 'AgentId Not Found');								
+			}else{				
+				$Content_Type = group_id_validation($uGroupId);
+				$Fields_NameArr = getFieldsName($Content_Type);
+				if(!empty($Fields_NameArr[0])){	
+					$Fields_Name = (string) $Fields_NameArr[0];						
+				}
+				if(empty($Content_Type) && $Content_Type==''){					
+					$htmlArr .= "<tr>
+								<td>".($no+1)."</td>
+								<td>GroupID Not Exsist</td>
+								<td>".$ExpArr[2]."</td>
+								<td>".$ExpArr[3]."</td>
+								<td>".$filename."</td>
+								<td>GroupID Not Found</td>
+							</tr>";
+					$file_scan_log = manage_filescan_log($UserID, $ExpArr[3], $ExpArr[4], $filename, 'GroupID Not Found');
+				}else{
+					$htmlArr .= "<tr>
+									<td>".($no+1)."</td>
+									<td>".$UserName."</td>
+									<td>".$ExpArr[2]."</td>
+									<td>".$ExpArr[3]."</td>
+									<td>".$filename."</td>
+								</tr>";
+					$NodeTitle = "Commission Report for ".date('M Y', strtotime($ExpArr[4]));            
+					if($UserID){						
+						$validResponse = node_duplicate_check($ExpArr[2],$ExpArr[4]);
+						$ExsistNodeID = 0;
+						foreach ($validResponse as $params) {
+							$ExsistNodeID = $params->nodeid;								  
+						} 
+						
+						if(isset($ExsistNodeID) && $ExsistNodeID != 0){//die('imin');
+							$NodeID = updatContent($NodeTitle,$filename,$ExsistNodeID,$Content_Type,$ExpArr[4],$ExpArr[2],$Fields_Name);
+							//$message = "<br>Files updated successfully.<br>";
+							drupal_set_message(t('Files updated successfully'));
+							$ContentAccess = '';
+						}else{			
+
+					//echo '<BR>FileName = '.$filename.'-Ntit='.$NodeTitle.'--'.$ExpArr[2].'--'.$ExpArr[4];
+							$NodeID = addNewContent($NodeTitle,$filename,$Content_Type,$ExpArr[2],$ExpArr[4],$Fields_Name,$payout);
+							$ContentAccess = CreateContentAccessEntry($NodeID);
+						}
+						//echo '<BR><BR>CACCESS ='.$ContentAccess;exit;
+						if($ContentAccess){									
+							$responseAclNodeEntry = manageAclNodeEntry($NodeID,$UserID);
+							if($responseAclNodeEntry){
+								//$message = "<br>Files impoted successfully.<br>";
+								drupal_set_message(t('Files impoted successfully'));
+							}					
+						}
+						
+					}else{
+						echo ' The website encountered an unexpected error. Please try again later. ';
+					} 			
+				}/*Content Type VALIDATION CONDITION END HERE*/			
+			}/*  AGENT ID VALIDATION CONDITION END HERE*/		
+			           
+          }          
+        }
+        
+      }
+      $no++;
+      //echo '<pre>';print_r($_REQUEST);exit;
+      
+	  //$htmlArr .= "<tr><td colspan='3'>&nbsp;</td></tr></table>";
+	  //echo '<BR><BR><span style="text-align:center;font-weight:bold;">'.$message.'</span><BR><BR>';
+	  $resultNType = db_query("SELECT subject,body,mid FROM `scan_file_mailconfig`"); 
+	  $nums = $resultNType->rowCount();		
+	  if($nums>0){			
+		foreach ($resultNType as $rec) {
+			$subject = $rec->subject;
+			$body = $rec->body;
+		}
+		$body = array(
+			  'subject' => $subject,
+			  'body' => $body,
+			);
+	  }else{
+			$body = $htmlArr;
+	  }
+	  @drupal_mail('file_scan', 'file_scan_mail', 'demo@demo.com', language_default(), array('values' => $body));
+      @drupal_set_message(t('Form submitted. Check your email for varification')); 
+      //custom message after form submission is successful	  
+      if(isset($_REQUEST['scan']) && $_REQUEST['scan']==1){
+	  	echo 1;exit;
+	  }
+      closedir($handle);
+    }
+    else {
+      Drupal::logger('file')->error('@dir can not be opened', array('@dir' => $dir));
+    }
+  }  
+
+  drupal_goto();
+}
+
+// Implementation of hook_mail()
+function file_scan_mail($key, &$message, $params)
+{
+  // Use the key we used in our call to drupal_mail()
+  if($key == 'file_scan_mail')
+  {
+    // Set the subject and body of the message.
+    //$message['subject'] = t($params['values']['subject'])
+    //$message['body'] = t('This value was submitted: !value', array('!value' => $params['values']['body']));
+  }
+}
+
+/* GET USER ID */
+function get_my_data($AgentID){
+    $sql = "SELECT entity_id as uid,bundle as name FROM `field_data_field_agentid` WHERE `field_agentid_value`='".$AgentID."'";    
+    return $users = db_query($sql);  		
+}
+ 
+function get_username($uid)
+{
+    $sql = "SELECT name FROM `users` WHERE `uid`='".$uid."'";
+    $usersaa = db_query($sql); 
+    foreach ($usersaa as $records) {
+		return $records->name;		  
+	} 		
+}
+
+/* CREATE NODE */
+function addNewContent($title,$filename,$content_type,$aagentid,$ComisionDate,$FieldName,$payout){
+	//echo '<BR>Fname = '.$title.'-'.$filename.'-'.$content_type.'-'.$aagentid.'-'.$ComisionDate.'-'.$FieldName.'-'.$payout. '<BR>';
+	//echo '<BR>Fname = '.$FieldName;exit;
+	global $user;
+	global $base_url;
+	//$dir = variable_get('folder_name');
+	 $dir = 'my_commissions';
+	$path = $base_url.'/'.$dir.'/'.$filename;
+	//echo '<BR>FileName = '.$filetitle = $filename;
+	$dated = time();	
+	$destinationPath = 'public://'.$content_type;
+	@mkdir($destinationPath, '0777', '');
+	$remoteDocPath = $base_url.'/'.$dir.'/'.$filename;
+	//die;
+	//$doc = system_retrieve_file($remoteDocPath, $destinationPath, FALSE, FILE_EXISTS_REPLACE);
+	$doc = system_retrieve_file($remoteDocPath, $destinationPath, TRUE, FILE_EXISTS_REPLACE);
+    //exit;
+	$file = drupal_add_existing_file($doc);		
+	$node = new stdClass();
+	$file_temp = file_get_contents($path);
+	$file_temp = file_save_data($file_temp, $destinationPath, FILE_EXISTS_RENAME);
+	
+	$node->title = $title;
+	if($content_type == 'commission_reports')
+	{
+		//$node->field_payout = 
+		$node->field_payout[LANGUAGE_NONE]['0']['value'] = $payout;
+		$node->field_user_dropdown[LANGUAGE_NONE]['0']['value'] = $user->uid;
+		//$node->{'field_payout'}[LANGUAGE_NONE]['0']['fid'] = $payout;
+		//$node->field_user_dropdown = $user->uid;
+		
+	}
+	
+	$node->type = $content_type; //agent_private_docs
+	node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().		
+	$node->{$FieldName}[LANGUAGE_NONE]['0']['fid'] = $file->fid;
+	$node->{$FieldName}[LANGUAGE_NONE]['0']['display'] = 1;	
+	$node->language = LANGUAGE_NONE; // Or e.g. 'en' if locale is enabled
+	
+	$node->uid = $user->uid;
+	$node->status = 1; //(1 or 0): published or not
+	$node->promote = 0; //(1 or 0): promoted to front page
+	$node->comment = 1; // 0 = comments disabled, 1 = read only, 2 = read/write
+	
+	$mime = 'txt,png,jpg,doc,docx';	
+	$node = node_submit($node); // Prepare node for saving
+	node_save($node);
+	manage_node_entry($node->nid,$filename,$ComisionDate,$aagentid,$content_type,'0');
+	
+	return $node->nid;
+}
+
+
+function updatContent($NodeTitle,$filename,$addedNID,$content_type,$ComisionDate,$agentAddID,$FieldName){	
+	global $user;
+	global $base_url;
+	//$dir = variable_get('folder_name');
+	 $dir = 'my_commissions';
+	$path = $base_url.'/'.$dir.'/'.$filename;
+	$dated = time();	
+	$destinationPath = 'public://'.$content_type;
+	
+	$remoteDocPath = $base_url.'/'.$dir.'/'.$filename;
+	$doc = system_retrieve_file($remoteDocPath, $destinationPath, FALSE, FILE_EXISTS_REPLACE);
+	$file = drupal_add_existing_file($doc);	
+	
+	
+	$node = node_load($addedNID);
+	$file_temp = file_get_contents($path);
+	$file_temp = file_save_data($file_temp, $destinationPath, FILE_EXISTS_RENAME);
+	$node->title = $NodeTitle;
+	
+	//echo '<pre>';print_r($node);exit;
+	node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().		
+	$node->{$FieldName}[LANGUAGE_NONE]['0']['fid'] = $file->fid;
+	$node->{$FieldName}[LANGUAGE_NONE]['0']['display'] = 1;	 
+	
+	$mime = 'txt,png,jpg,doc';	
+	node_save($node);
+
+	/*
+	$field_data = (object) array(
+        'entity_type' => 'node',
+        'bundle' => $content_type,
+        'deleted' => 0,        
+        'language' => 'und',
+        'delta' => 0,
+        'field_docs_fid' => $file_temp->fid,
+        'field_docs_display' => 1,
+        'field_docs_description' => ''
+    );    
+    $fieldsNAme = 'field_data_field_document';
+    drupal_write_record('field_data_'.$FieldName, $field_data,'entity_id' , $node->nid);*/
+    
+    
+	manage_node_entry($addedNID,$filename,$ComisionDate,$agentAddID,$content_type,'1');
+	return $addedNID;	
+}
+
+function drupal_add_existing_file($file_drupal_path, $uid = 1, $status = FILE_STATUS_PERMANENT) {
+  $files = file_load_multiple(array(), array('uri' => $file_drupal_path));
+  $file = reset($files);
+  if (!$file) {
+    $file = (object) array(
+        'filename' => basename($file_drupal_path),
+        'filepath' => $file_drupal_path,
+        'filemime' => file_get_mimetype($file_drupal_path),
+        'filesize' => filesize($file_drupal_path),
+        'uid' => $uid,
+        'status' => $status,
+        'timestamp' => time(),
+        'uri' => $file_drupal_path,
+    );
+    drupal_write_record('file_managed', $file);
+  }
+  return $file;
+}
+
+
+/* Manage Entry On Content Access */
+function CreateContentAccessEntry($NodeID){
+	$settings = 'a:6:{s:4:"view";a:1:{i:0;i:3;}s:8:"view_own";a:1:{i:0;i:3;}s:6:"update";a:1:{i:0;i:3;}s:10:"update_own";a:1:{i:0;i:3;}s:6:"delete";a:1:{i:0;i:3;}s:10:"delete_own";a:1:{i:0;i:3;}}';
+	$AddContentAccessSql2 = "INSERT INTO `content_access` (`nid`, `settings`)
+VALUES ('".$NodeID."', '".$settings."')";
+	
+	$executeQry1 = db_query($AddContentAccessSql2);
+	if($executeQry1){return true;}else{return false;}
+}
+
+
+/**/
+function manageAclNodeEntry($NodeID, $UID){	
+	/* VIEW PERMISSION TO AGENT */
+	$aclName = "view_".$NodeID;
+	$AutoAclID = db_insert('acl') // Table name no longer needs {}
+			->fields(array(
+			  'module' => 'content_access',
+			  'name' => $aclName,					  
+			))
+			->execute();
+		
+	$updateNodeAccess = "UPDATE `node_access` SET  `gid` = $AutoAclID, realm = 'acl' , grant_view =1, grant_delete=0, grant_update=0 where `nid`= '".$NodeID."'";
+	$exe = db_query($updateNodeAccess);
+	
+	$AAclID = db_insert('acl_user') // Table name no longer needs {}
+			->fields(array(
+			  'acl_id' => $AutoAclID,
+			  'uid' => $UID,					  
+			))
+			->execute();		
+	
+	$AclRespo = db_insert('acl_node') // Table name no longer needs {}
+		->fields(array(
+		  'acl_id' => $AutoAclID,
+		  'nid' => $NodeID,
+		  'grant_view' => 1,
+		  'grant_update' => 0,
+		  'grant_delete' => 0,
+		  'priority' => 0,					  
+		))
+		->execute();
+		
+	/* DELETE PERMISSION TO AGENT 
+	$aclName = "view_".$NodeID;
+	$AutoAclID = db_insert('acl') // Table name no longer needs {}
+			->fields(array(
+			  'module' => 'content_access',
+			  'name' => $aclName,					  
+			))
+			->execute();
+		
+	$updateNodeAccess = "UPDATE `node_access` SET  `gid` = $AutoAclID, realm = 'acl' , grant_view =0, grant_delete=1, grant_update=0 where `nid`= '".$NodeID."'";
+	$exe = db_query($updateNodeAccess);
+	
+	$AAclID = db_insert('acl_user') // Table name no longer needs {}
+			->fields(array(
+			  'acl_id' => $AutoAclID,
+			  'uid' => $UID,					  
+			))
+			->execute();		
+	
+	$AclRespo = db_insert('acl_node') // Table name no longer needs {}
+		->fields(array(
+		  'acl_id' => $AutoAclID,
+		  'nid' => $NodeID,
+		  'grant_view' => 0,
+		  'grant_update' => 0,
+		  'grant_delete' => 1,
+		  'priority' => 0,					  
+		))
+		->execute();*/	
+	return true;
+}
+
+
+/* Agent ID validation response accordingly */
+
+
+/* Geoup ID validation response accordingly */
+function group_id_validation($userGroupId){
+	$resultNodeType = db_query("SELECT type FROM `node_type` WHERE description='".$userGroupId."'"); 
+	foreach ($resultNodeType as $records) {		
+		return $records->type;		  
+	} 	
+    return '';
+}
+
+function getFieldsName($content_type){
+		$options = array('target' => 'slave');
+		$sql = "SELECT field_name
+		FROM field_config_instance ci 
+		WHERE ci.bundle = :content_type ";
+		$result = db_query($sql, array(':content_type' => $content_type,), $options);
+		$fields = array();
+		$FileFields = array();
+		foreach ($result->fetchAll() as $key => $field) {
+			$resultNodeType = db_query("SELECT * FROM `field_config` WHERE `field_name` = '".$field->field_name."' and type='file' AND storage_active = '1' ");
+			foreach ($resultNodeType->fetchAll() as $keys => $fields) {
+				$FileFields[] = $field->field_name;
+			}
+		}
+		return $FileFields;
+}
+
+
+
+/* Validate duplicacy of contents  */
+function node_duplicate_check($agentId, $fileDate) {
+	return db_query("SELECT * FROM `node_entry_revision` WHERE agent_id='".$agentId."' AND file_date = '".$fileDate."'"); 	
+}
+
+function update_node($NodeID){
+	$node = node_load($nid);
+	$node->field['field_myfield'][LANGUAGE_NONE][0]['value'] = 1;
+	return $node_wrapper->save();
+}
+
+function manage_node_entry($nid,$file_name,$file_date,$agent_id,$content_type,$action){
+	if($action==0){
+		 $AAclID = db_insert('node_entry_revision') // Table name no longer needs {}
+			->fields(array(
+			  'nodeid' => $nid,
+			  'file_name' => $file_name,
+			  'file_date' => $file_date,
+			  'agent_id' => $agent_id,
+			  'content_type' => $content_type,	
+			  		  
+			))
+			->execute();
+	}else{
+		 $num_updated = db_update('node_entry_revision') // Table name no longer needs {}
+		  ->fields(array(			
+			'file_name' => $file_name,
+			'file_date' => $file_date,
+			'agent_id' => $agent_id,
+			'content_type' => $content_type,
+		  ))
+		  ->condition('nodeid', $nid, '=')
+		  ->execute();
+	}
+}
+
+
+function manage_filescan_log($AgentID, $ContentType, $ContentDate, $ContentFile, $ContentStatus){
+	//$resultNodeType = db_query("SELECT id FROM file_scan_log where user_id='".$AgentID."' and filename='".$ContentFile."'"); 	
+	//$num_of_results = $resultNodeType->rowCount();
+	//if($num_of_results==0){
+		
+		$AclRespo = db_insert('file_scan_log') // Table name no longer needs {}
+			->fields(array(
+			  'user_id' => $AgentID,
+			  'file_content' => $ContentType,
+			  'file_date' => $ContentDate,
+			  'filename' => $ContentFile,
+			  'status' => $ContentStatus,					  
+			))
+			->execute();
+	//}
+}

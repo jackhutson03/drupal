@@ -1,0 +1,169 @@
+<?php 
+function view_commission_menu() {
+	$items = array();
+	$items['send_email'] = array(
+		'title' => 'Send Email',
+		'page callback' => 'send_email',
+		'access callback' => TRUE,
+	);
+	$items['save_agent_id'] = array(
+		'title' => 'Save Agent Id',
+		'page callback' => 'save_agent_id',
+		'access callback' => TRUE,
+	);
+  	return $items;
+}
+
+function save_agent_id()
+{
+	$uid = $_POST['uid'];
+	$agentid = $_POST['agentid'];
+	$existingUser = user_load($uid);
+	$existingUser->field_agentid['und'][0]['value'] = $agentid;
+	user_save($existingUser);
+	echo  "Agent id successfully saved ABC.";
+}
+function send_email()
+{
+	$ids = explode(',', $_POST['ids']);
+	//print_r($ids);
+	foreach($ids as $id)
+	{
+		global $user;
+		$UserID = $id;
+		$user_details = user_load($UserID);
+		//print_r($user_details);
+		$Uemail = $user_details->mail;
+		$Uname = $user_details->field_first_name['und'][0]['value']." ".$user_details->field_last_name['und'][0]['value'];	
+		
+		$valid_email = 'demo@demo.com';//$Uemail;
+		$from = 'demo@demo.com';
+		$body = 'Hello, '.$Uname.'<br><br>
+
+		Your commission report for this pay period is now available on the Demo Cloud Partners portal.<br><br>
+
+		To Access Your Commissions Report:<br>
+		1. https://demo.com<br>
+		2. COMMISSIONS section in the left column, click on MY COMMISSION REPORT to view your commission report history.<br> 
+		3. DOWNLOAD your report: click on the green download icon. VIEW your report: click on the black doc icon.<br><br>
+
+		<small>*Login Credentials<br>
+		Username: '.$Uemail.'<br>
+		Password: Click on the FORGOT PASSWORD button. A temporary password will be sent to you. You can change the password when you login in under my account than account settings.  <br><br>
+
+
+		• Commission Report Questions: demo@demo.com<br>
+		• Agent Portal questions: demo@demo.com<br></small>';
+	  
+		$params = array(
+		'body' => $body,
+		'subject' => 'Commission Report',
+		);
+		 
+		if (drupal_mail('file_scan', 'file_scan_mail', $valid_email, language_default(), $params, $from, TRUE))
+		{
+			drupal_set_message('Email has been sent successfully.'); 
+			echo "Email has been sent successfully.";
+			     
+		} else {
+			drupal_set_message('There was an error sending your email.');
+			echo "There was an error sending your email.";
+		}
+				
+	}
+	
+}
+
+function view_commission_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == "views_exposed_form" && $form['#id'] == "views-exposed-form-commision-report-testing-only-page") {
+    
+     //~ '#order_by' => 'text', // May contain values as "text" or "value".
+     //~ '#sort_order' => 'asc', // May contain values as "asc" or "desc".
+    $form['field_first_name_value']['#type'] = "select";
+    $form['field_first_name_value']['#order_by'] = "text";
+    $form['field_first_name_value']['#sort_order'] = "asc";
+    $form['field_first_name_value']['#size'] = null;
+    $form['field_first_name_value']['#default_value'] = $form['field_collection_item_decade_value']['#options']['All'];
+    
+   
+	$type = "commission_reports"; 
+	$nodes = node_load_multiple(array(), array('type' => $type));   
+	 $captain =array('' => t('All'));
+	
+	 $i = 0;
+	 $form['#validate'][] = 'view_commission_date_filter_validate';
+	foreach($nodes as $report)
+	{
+		
+		$userD = $report->field_user_dropdown; 
+		$addDate = $report->field_commission_add_date;
+		$userID = $userD['und'][0]['target_id'];
+		$user_fields = user_load($userID);
+
+		$firstname = $user_fields->field_first_name['und']['0']['value'];
+		$lastname = $user_fields->field_last_name['und']['0']['value'];
+		$year[date('Y', strtotime($addDate['und']['0']['value']))] = date('Y', strtotime($addDate['und']['0']['value']));
+		$construct =  $firstname. ' ' . $lastname ; 
+		$construct1 =  ucfirst($firstname). ' ' . ucfirst($lastname) ; 
+        $captain[$construct] = t($construct1);
+        $i++;
+	}
+	//print_r(sort($captain));
+		
+		$form['field_first_name_value']['#options'] = $captain;
+		asort($form['field_first_name_value']['#options']);
+	  $format = 'm';
+      $form['field_commission_add_date_value_1']['value']['#date_format'] = $format;
+      
+      
+	  $format = 'Y';
+      $form['field_commission_add_date_value']['value']['#date_format'] = $format;
+      
+	  $form['views_exposed_form'] = array(
+			   '#markup' => '<span class="ldr2" style="display:none;"><img src="/img/throbber-active.gif"/></span><div class="sendemailtoagent" style="display:none;"><a class="sendmail" onclick="sendemailtoagentAjax(chekrows);">Send Email</a></div><div class="apibutton"><a onclick="CalltoCommissionApi();">Request Commission Reports</a></div>',
+			);
+		
+      
+  }
+  
+  
+  
+  if ($form_id == "views_exposed_form" && $form['#id'] == "views-exposed-form-commision-report-user-page") {
+	  $form['#validate'][] = 'view_commission_date_filter_validate';
+	  
+  }
+}
+
+function view_commission_date_filter_validate(&$form, &$form_state) {
+	
+	
+		$type = "commission_reports"; 
+		$nodes = node_load_multiple(array(), array('type' => $type)); 
+		$year =array('' => t('All'));
+		foreach($nodes as $report)
+		{
+			$addDate = $report->field_commission_add_date;
+			$year[date('Y', strtotime($addDate['und']['0']['value']))] = date('Y', strtotime($addDate['und']['0']['value']));
+		}
+}
+
+function view_commission_views_query_alter(&$view, &$query){
+	
+	
+	
+	if($view->name=='commision_report_testing_only') // in place of demo12 ,place your view name here
+    {
+		$month = $_REQUEST['field_commission_add_date_value_1']['value']['month'];
+        if(isset($month) && $month != '')
+        {
+		
+		$query->where[2]['conditions'][0] = array();
+        $query->where[2]['conditions'][0]['field']="DATE_FORMAT(ADDTIME(field_data_field_commission_add_date.field_commission_add_date_value, SEC_TO_TIME(-28800)), '%m') = :field_data_field_date_field_date_value";   
+
+
+        $query->where[2]['conditions'][0]['value'][':field_data_field_date_field_date_value'] = '0'.$month;
+        $query->where[2]['conditions'][0]['operator']= 'formula';
+        }
+       
+    }
+}
